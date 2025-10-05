@@ -1,20 +1,22 @@
-
 # Fast Hash Index
 
 A command-line tool to **index a directory with file hashes**, detect changes (added, updated, deleted files), and optionally **synchronize them** to a target directory.  
-It supports two hash algorithms (`blake3` and `xxh3`), glob-based exclusions, and preserves **permissions and timestamps** when synchronizing.
+It supports two hash algorithms (`blake3` and `xxh3`), glob-based exclusions (with smart directory expansion), and preserves **permissions and timestamps** when synchronizing.
 
 ---
 
 ## Features
 
 - Indexes all regular files in a directory.
-- Stores file metadata in a *state file* (`path:size:timestamp:hash`).
+- Stores file metadata in a *state file* (`path:size:timestamp:hash`), written deterministically (sorted).
 - Detects changes compared to the previous state:
   - **A:** Added  
   - **U:** Updated (hash changed)  
   - **D:** Deleted
-- Supports exclusion patterns (`--exclude '**/target/**'`).
+- Supports exclusion patterns (`-x/--exclude <GLOB>`).  
+  If you exclude a directory name (e.g. `.context`), it is automatically expanded to cover the whole subtree:
+  - `.context`, `.context/**`, and `**/.context/**`
+- Efficiently prunes excluded directories during the walk (does not descend into them).
 - Choice of hash algorithm:
   - `blake3` (default, cryptographic, fast).
   - `xxh3` (very fast, non-cryptographic).
@@ -27,7 +29,7 @@ It supports two hash algorithms (`blake3` and `xxh3`), glob-based exclusions, an
 
 ```bash
 cargo build --release
-````
+```
 
 The binary will be available at:
 
@@ -50,10 +52,11 @@ fast-hash-index [OPTIONS] <STATE_FILE> <DIR>
 
 * `-x, --exclude <PATTERN>`
   Exclude files/directories matching a glob pattern. Can be repeated.
-  Example:
+  Examples:
 
   ```bash
   --exclude '**/target/**' --exclude '*.log'
+  --exclude .context          # automatically excludes the entire subtree
   ```
 
 * `--algo <blake3|xxh3>`
@@ -82,12 +85,13 @@ fast-hash-index [OPTIONS] <STATE_FILE> <DIR>
 fast-hash-index state.txt ./my-project
 ```
 
-### 2. Exclude patterns
+### 2. Exclude patterns (including whole subtrees)
 
 ```bash
 fast-hash-index state.txt ./my-project \
   --exclude '**/target/**' \
-  --exclude '*.tmp'
+  --exclude '*.tmp' \
+  --exclude .context
 ```
 
 ### 3. Use xxh3 (faster, non-cryptographic)
@@ -129,8 +133,9 @@ D: path/to/removed_file.log
 ## Notes
 
 * The state file is overwritten after each run (unless `--no-write` is used).
-* Target directory must not overlap with the source directory.
+* The **target directory must not overlap** with the source directory; if they are the same or one contains the other, the program exits with an error.
 * On Unix, file **mode bits** (permissions) are preserved.
 * On all platforms, **timestamps** (mtime/atime) are preserved using the `filetime` crate.
+* Excluded directories are **pruned** during traversal for speed and correctness.
 
 
